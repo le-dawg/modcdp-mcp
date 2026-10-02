@@ -1,0 +1,16 @@
+{
+  "name": "modcdp-mcp",
+  "version": "0.2.0",
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests/*.test.mjs",
+    "build:extensions": "node scripts/build-extensions.mjs",
+    "register": "node scripts/register-harnesses.mjs",
+    "uninstall": "node scripts/uninstall.mjs"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0",
+    "typescript": "^5.8.0",
+    "ws": "^8.18.0"
+  }
+}
