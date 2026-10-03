@@ -57,8 +57,9 @@ for (const slot of SLOTS) {
   });
 
   test(`${slot.tag}: offscreen_keepalive.js exists and contains keepalive`, async () => {
-    const keepalivePath = path.join(EXT_BASE, slot.tag, "modcdp", "offscreen_keepalive.js");
+    const keepalivePath = path.join(EXT_BASE, slot.tag, "offscreen", "offscreen_keepalive.js");
     const content = await readFile(keepalivePath, "utf8");
+
     assert(
       content.includes("keepalive"),
       `offscreen_keepalive.js missing keepalive logic in ${keepalivePath}`
