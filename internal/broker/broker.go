@@ -133,13 +133,17 @@ func New(cfg Config) *Broker {
 	}
 }
 
-// slotFor returns the slot pointer for a browser tag.
+// slotFor returns the slot pointer for a browser tag, or nil if unknown.
 func (b *Broker) slotFor(tag string) *BrowserSlot {
 	if tag == "dev" {
 		return &b.dev
 	}
-	return &b.main
+	if tag == "main" {
+		return &b.main
+	}
+	return nil
 }
+
 
 // Start launches the broker: orphan socket cleanup, TCP listeners, Unix IPC.
 func (b *Broker) Start(ctx context.Context) error {
@@ -512,10 +516,14 @@ func (b *Broker) handleSendRequest(req IpcRequest) []byte {
 	}
 
 	slot := b.slotFor(target)
+	if slot == nil {
+		return b.browserUnavailableErr(target)
+	}
 	slot.mu.Lock()
 	state := slot.state
 	wsConn := slot.ws
 	slot.mu.Unlock()
+
 
 	if state != StateReady || wsConn == nil {
 		return b.browserUnavailableErr(target)

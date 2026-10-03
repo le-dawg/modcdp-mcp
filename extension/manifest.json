@@ -1,0 +1,31 @@
+{
+  "manifest_version": 3,
+  "name": "ModCDP Bridge",
+  "version": "0.2.0",
+  "description": "Standalone ModCDP dual-browser MCP automation bridge.",
+  "background": {
+    "service_worker": "modcdp/service_worker.js",
+    "type": "module"
+  },
+  "permissions": [
+    "activeTab",
+    "tabs",
+    "debugger",
+    "offscreen",
+    "scripting"
+  ],
+  "host_permissions": [
+    "<all_urls>",
+    "http://localhost/*",
+    "http://127.0.0.1/*",
+    "ws://localhost/*",
+    "ws://127.0.0.1/*"
+  ],
+  "action": {
+    "default_title": "ModCDP Bridge"
+  },
+  "options_ui": {
+    "page": "pages/options.html",
+    "open_in_tab": false
+  }
+}

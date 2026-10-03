@@ -1,0 +1,10 @@
+{
+  "name": "modcdp-extension",
+  "version": "0.2.0",
+  "type": "module",
+  "devDependencies": {
+    "@types/chrome": "^0.0.323",
+    "esbuild": "^0.25.0",
+    "typescript": "^5.8.0"
+  }
+}
