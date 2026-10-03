@@ -1,0 +1,53 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  goreleaser:
+    name: Build & Release Binaries
+    runs-on: macos-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Build Binaries (macOS ARM64 & x86_64, Linux amd64)
+        run: |
+          mkdir -p dist
+          GOARCH=arm64 GOOS=darwin go build -ldflags="-s -w" -o dist/modcdp-mcp-darwin-arm64 ./cmd/modcdp-mcp/
+          GOARCH=amd64 GOOS=darwin go build -ldflags="-s -w" -o dist/modcdp-mcp-darwin-amd64 ./cmd/modcdp-mcp/
+          GOARCH=amd64 GOOS=linux go build -ldflags="-s -w" -o dist/modcdp-mcp-linux-amd64 ./cmd/modcdp-mcp/
+          
+          # Package extensions
+          npm ci
+          node scripts/build-extensions.mjs
+          tar -czf dist/modcdp-extensions-v0.2.0.tar.gz -C ~/.config/modcdp-mcp/extensions .
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/modcdp-mcp-darwin-arm64
+            dist/modcdp-mcp-darwin-amd64
+            dist/modcdp-mcp-linux-amd64
+            dist/modcdp-extensions-v0.2.0.tar.gz
+          draft: false
+          prerelease: false
+          generate_release_notes: true

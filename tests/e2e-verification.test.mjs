@@ -217,6 +217,9 @@ test("End-to-End MCP & Dual-Browser Verification across all 6 tools", async () =
     child.stdin.end();
     mainWs.close();
     devWs.close();
-    await new Promise((r) => child.on("exit", r));
+    if (child.exitCode === null) {
+      await new Promise((r) => child.on("exit", r));
+    }
   }
+
 });

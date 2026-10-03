@@ -95,7 +95,10 @@ test("Broker connects dual browsers, enforces handshake, routes commands over IP
   } finally {
     mainWs.close();
     devWs.close();
-    child.kill("SIGTERM");
-    await new Promise((r) => child.on("exit", r));
+    if (child.exitCode === null) {
+      child.kill("SIGTERM");
+      await new Promise((r) => child.on("exit", r));
+    }
   }
+
 });

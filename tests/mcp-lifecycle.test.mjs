@@ -134,6 +134,9 @@ test("MCP server lifecycle: initialize, notifications/initialized, tools/list, a
   } finally {
     child.stdin.end();
     mainWs.close();
-    await new Promise((r) => child.on("exit", r));
+    if (child.exitCode === null) {
+      await new Promise((r) => child.on("exit", r));
+    }
   }
+
 });

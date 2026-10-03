@@ -7,6 +7,7 @@
 
     "build:extensions": "node scripts/build-extensions.mjs",
     "register": "node scripts/register-harnesses.mjs",
+    "onboard": "node scripts/onboard.mjs",
     "uninstall": "node scripts/uninstall.mjs"
   },
   "devDependencies": {
