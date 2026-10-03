@@ -236,19 +236,27 @@ func (b *Broker) handleWSUpgrade(w http.ResponseWriter, r *http.Request, browser
 	var hello struct {
 		Type         string `json:"type"`
 		BrowserTag   string `json:"browser_tag"`
+		Browser      string `json:"browser"`
+		Role         string `json:"role"`
+		Version      int    `json:"version"`
 		ExtVersion   string `json:"extension_version"`
 		SessionNonce int64  `json:"session_nonce"`
 		BuildHash    string `json:"build_hash"`
+		ExtensionID  string `json:"extension_id"`
 	}
-	if err := json.Unmarshal(msg, &hello); err != nil || hello.Type != "hello" {
+	if err := json.Unmarshal(msg, &hello); err != nil || (hello.Type != "hello" && hello.Type != "modcdp.reverse.hello") {
 		conn.WriteMessage(websocket.CloseMessage,
 			websocket.FormatCloseMessage(1002, "invalid_handshake"))
 		conn.Close()
 		return
 	}
 
+	if hello.SessionNonce == 0 {
+		hello.SessionNonce = time.Now().UnixNano()
+	}
+
 	slot.mu.Lock()
-	if slot.state == StateReady && slot.sessionNonce >= hello.SessionNonce {
+	if slot.state == StateReady && slot.sessionNonce > 0 && slot.sessionNonce >= hello.SessionNonce {
 		// Incoming nonce is not newer → reject as stale
 		slot.mu.Unlock()
 		conn.WriteMessage(websocket.CloseMessage,
@@ -256,6 +264,7 @@ func (b *Broker) handleWSUpgrade(w http.ResponseWriter, r *http.Request, browser
 		conn.Close()
 		return
 	}
+
 	// Evict old connection if any
 	if slot.ws != nil {
 		old := slot.ws
