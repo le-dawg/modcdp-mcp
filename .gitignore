@@ -1,4 +1,37 @@
+# Binaries and build outputs
 bin/
-node_modules/
-*.js.map
+dist/
 dist-extension/
+modcdp-mcp
+modcdp-mcp-*
+*.exe
+*.dylib
+*.so
+*.dll
+
+# Dependencies
+node_modules/
+
+# Source maps
+*.js.map
+
+# Test and coverage artifacts
+*.out
+coverage.txt
+coverage.html
+
+# Operating System and editor files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Transient teamwork coordination directories (preserves ORIGINAL_REQUEST.md and PROJECT.md)
+.agents/teamwork/explorer_*
+.agents/teamwork/worker_*
+.agents/teamwork/reviewer_*
+.agents/teamwork/challenger_*
+.agents/teamwork/auditor_*
+.agents/teamwork/orchestrator_*

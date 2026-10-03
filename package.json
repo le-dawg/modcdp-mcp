@@ -2,6 +2,9 @@
   "name": "modcdp-mcp",
   "version": "0.2.0",
   "type": "module",
+  "bin": {
+    "modcdp-mcp": "./bin/modcdp-mcp"
+  },
   "scripts": {
     "test": "node --test --test-concurrency=1 tests/*.test.mjs",
 

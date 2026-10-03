@@ -8,8 +8,12 @@ on:
 
 jobs:
   test:
-    name: Build & Test (Go + Node.js)
-    runs-on: macos-latest
+    name: Build & Test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [macos-latest, ubuntu-latest]
+
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -29,14 +33,18 @@ jobs:
       - name: Install NPM Dependencies
         run: npm ci
 
-      - name: Run Go Tests
-        run: go test ./... -v
+      - name: Build Go Binary
+        run: |
+          mkdir -p "$HOME/.local/bin" bin
+          go build -ldflags="-s -w" -o "$HOME/.local/bin/modcdp-mcp" ./cmd/modcdp-mcp/
+          cp "$HOME/.local/bin/modcdp-mcp" bin/modcdp-mcp
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
 
       - name: Build Standalone Extensions
         run: node scripts/build-extensions.mjs
 
+      - name: Run Go Tests
+        run: go test ./... -v
+
       - name: Run Node Test Suite
         run: npm test
-
-      - name: Build Binary
-        run: go build -o bin/modcdp-mcp ./cmd/modcdp-mcp/

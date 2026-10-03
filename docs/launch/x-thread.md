@@ -1,51 +1,71 @@
 # Viral X (Twitter) Launch Thread
 
-### Tweet 1 (Hook + Video/GIF Demo)
-Chrome 136/144+ broke local AI coding agents. 
+### Tweet 1 (The Problem Hook + Demo)
+Chrome 136/144+ quietly broke local AI coding agents.
 
-Connecting over standard CDP now spams modal alerts ("Allow remote debugging?") every 5 minutes, breaking Claude Code and Codex in autonomous mode.
+Any connection to standard CDP (`--remote-debugging-port=9222`) now triggers an intrusive modal alert ("Allow remote debugging?") every few minutes.
 
-We built ModCDP-MCP: a native zero-modal dual-browser MCP server for Chrome. ⚡
+Unattended agent loops stall. Developer flow destroyed.
 
-🧵👇 [Demo Video / GIF]
+Introducing **ModCDP-MCP**: zero-modal Chrome automation for AI agents. ⚡
 
----
-
-### Tweet 2 (The Architecture)
-How does it bypass the modal alerts?
-
-Instead of opening an inbound port on Chrome (`:9222`), an unpacked MV3 extension connects *outbound* via reverse WebSocket to a native Go broker on localhost.
-
-Zero consent modals. Zero broken sessions. Instant pair-programming with your live tabs.
+🧵👇 [Demo Video / GIF: Claude Code inspecting live Chrome tab with zero popups]
 
 ---
 
-### Tweet 3 (Dual-Browser + Active Tab Targeting)
-Most browser MCP servers are blind to what you're actually looking at.
+### Tweet 2 (The Inverted Architecture)
+How does ModCDP bypass the modal alerts?
 
-ModCDP-MCP introduces:
-• `get_active_tab`: Targets the exact tab you're focused on
-• `find_tabs_by_title`: Instant regex search across 300+ tabs
-• Dual-slot routing: Main Chrome (`:29292`) & Chrome Dev (`:29293`) simultaneously
+By inverting the connection topology:
+
+Instead of an external process opening an inbound debug port into Chrome, an unpacked Manifest V3 extension initiates an *outbound* reverse WebSocket to a native Go broker on localhost.
+
+Chrome treats it as trusted extension traffic.
+
+Result:
+✅ Zero consent modals
+✅ Live session cookies & auth preserved
+✅ Zero disconnected sandbox windows
 
 ---
 
-### Tweet 4 (Turnkey Multi-Harness Support)
-One command configures all your AI coding tools:
+### Tweet 3 (Dual-Browser Multiplexing & Active Tab Precision)
+Traditional browser MCP servers are blind to what you're actually looking at.
+
+ModCDP-MCP solves this with foreground intelligence:
+
+🎯 `get_active_tab`: Targets the exact tab you have in focus
+🔍 `find_tabs_by_title`: Regex search across 300+ open tabs
+⚡ Dual-browser routing: Main Chrome (`:29292`) & Chrome Dev (`:29293`) concurrently
+📸 High-res screenshots + DOM evaluation in <5ms
+
+---
+
+### Tweet 4 (Turnkey Multi-Harness Setup)
+Setup takes under 60 seconds across all your AI agent tools:
 
 `node scripts/onboarding.mjs`
+(or `npm run onboard`)
 
-Automatically sets up:
-✅ Anthropic Claude Code & Desktop
-✅ OpenAI Codex CLI
-✅ Google Gemini / Antigravity CLI
-✅ GitHub Copilot
+One interactive CLI auto-configures:
+• Anthropic Claude Code & Desktop
+• OpenAI Codex CLI
+• Google Gemini / Antigravity CLI
+• GitHub Copilot & Cursor
+
+Plus it wires up a persistent macOS `launchd` daemon so it's always ready.
 
 ---
 
-### Tweet 5 (Call to Action)
-100% open source under MIT. Single Go binary, zero external dependencies, persistent macOS launchd support.
+### Tweet 5 (Open Source & Call to Action)
+ModCDP-MCP is 100% open source under the MIT License.
 
-⭐ Star on GitHub: https://github.com/le-dawg/modcdp-mcp
+Built with a fast, dependency-free Go broker daemon (<15MB RAM) and Manifest V3.
 
-RTs appreciated! What features do you want to see next?
+⭐ Star the repo on GitHub:
+https://github.com/le-dawg/modcdp-mcp
+
+Try the one-line install:
+`curl -fsSL https://raw.githubusercontent.com/le-dawg/modcdp-mcp/main/scripts/install.sh | bash`
+
+RT if you build with AI agents! What features should we add next? 🚀

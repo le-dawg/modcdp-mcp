@@ -6,8 +6,9 @@
     <string>com.dawgctor.modcdp-broker</string>
     <key>ProgramArguments</key>
     <array>
-        <string>/Users/thedawgctor/.local/bin/modcdp-mcp</string>
-        <string>broker</string>
+        <string>/bin/sh</string>
+        <string>-lc</string>
+        <string>exec "$HOME/.local/bin/modcdp-mcp" broker</string>
     </array>
     <key>RunAtLoad</key>
     <true/>

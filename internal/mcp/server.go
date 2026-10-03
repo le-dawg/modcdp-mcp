@@ -150,7 +150,7 @@ func RunMcpServer(in io.Reader, out io.Writer, sockPath string) error {
 				},
 				"serverInfo": map[string]interface{}{
 					"name":    "modcdp-mcp",
-					"version": "1.0.0",
+					"version": "0.2.0",
 				},
 			})
 

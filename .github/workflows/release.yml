@@ -9,7 +9,7 @@ permissions:
   contents: write
 
 jobs:
-  goreleaser:
+  release:
     name: Build & Release Binaries
     runs-on: macos-latest
     steps:
@@ -28,17 +28,27 @@ jobs:
         with:
           node-version: '22'
 
-      - name: Build Binaries (macOS ARM64 & x86_64, Linux amd64)
+      - name: Build Multi-Platform Binaries & Extension Bundles
         run: |
+          VERSION="${{ github.ref_name }}"
           mkdir -p dist
-          GOARCH=arm64 GOOS=darwin go build -ldflags="-s -w" -o dist/modcdp-mcp-darwin-arm64 ./cmd/modcdp-mcp/
-          GOARCH=amd64 GOOS=darwin go build -ldflags="-s -w" -o dist/modcdp-mcp-darwin-amd64 ./cmd/modcdp-mcp/
-          GOARCH=amd64 GOOS=linux go build -ldflags="-s -w" -o dist/modcdp-mcp-linux-amd64 ./cmd/modcdp-mcp/
           
-          # Package extensions
+          # Compile multi-platform binaries
+          LDFLAGS="-s -w -X main.version=${VERSION}"
+          GOARCH=arm64 GOOS=darwin go build -ldflags="${LDFLAGS}" -o dist/modcdp-mcp-darwin-arm64 ./cmd/modcdp-mcp/
+          GOARCH=amd64 GOOS=darwin go build -ldflags="${LDFLAGS}" -o dist/modcdp-mcp-darwin-amd64 ./cmd/modcdp-mcp/
+          GOARCH=amd64 GOOS=linux  go build -ldflags="${LDFLAGS}" -o dist/modcdp-mcp-linux-amd64  ./cmd/modcdp-mcp/
+          GOARCH=arm64 GOOS=linux  go build -ldflags="${LDFLAGS}" -o dist/modcdp-mcp-linux-arm64  ./cmd/modcdp-mcp/
+          
+          # Build and package extensions
           npm ci
           node scripts/build-extensions.mjs
-          tar -czf dist/modcdp-extensions-v0.2.0.tar.gz -C ~/.config/modcdp-mcp/extensions .
+          tar -czf "dist/modcdp-extensions-${VERSION}.tar.gz" -C "$HOME/.config/modcdp-mcp/extensions" .
+          
+          # Generate SHA256 checksums
+          cd dist
+          shasum -a 256 modcdp-mcp-* modcdp-extensions-* > checksums.txt
+          cd ..
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -47,7 +57,9 @@ jobs:
             dist/modcdp-mcp-darwin-arm64
             dist/modcdp-mcp-darwin-amd64
             dist/modcdp-mcp-linux-amd64
-            dist/modcdp-extensions-v0.2.0.tar.gz
+            dist/modcdp-mcp-linux-arm64
+            dist/modcdp-extensions-${{ github.ref_name }}.tar.gz
+            dist/checksums.txt
           draft: false
           prerelease: false
           generate_release_notes: true
