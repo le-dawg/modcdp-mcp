@@ -62,7 +62,7 @@
 | 2 | Codebase Hygiene & CI/CD Hardening | `.gitignore`, `.github/workflows/ci.yml`, `.github/workflows/release.yml`, plist template | None | DONE |
 | 3 | Installation & Packaging Experience | `scripts/install.sh`, `package.json`, `scripts/uninstall.mjs`, onboarding cleanup | M1, M2 | DONE |
 | 4 | Test Suite Verification | Verify 28/28 tests pass (`go test ./...` and `npm test`) | M2, M3 | DONE |
-| 5 | Public GitHub Publication | Push `main`, update tag `v0.2.0`, create GitHub Release with binaries | M1, M2, M3, M4 | IN_PROGRESS |
+| 5 | Public GitHub Publication | Push `main`, update tag `v0.2.0`, create GitHub Release with binaries | M1, M2, M3, M4 | DONE |
 | 6 | Launch & Marketing Execution | Complete all 4 launch files under `docs/launch/` | M5 | DONE |
 
 ## Code Layout
