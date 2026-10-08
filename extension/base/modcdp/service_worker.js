@@ -30849,6 +30849,10 @@ var ReverseWSDownstreamTransport = class extends DownstreamTransport {
       clearTimeout(this.reconnect_timer);
       this.reconnect_timer = null;
     }
+    if (this.heartbeat_timer) {
+      clearInterval(this.heartbeat_timer);
+      this.heartbeat_timer = null;
+    }
     const socket = this.socket;
     this.socket = null;
     if (socket?.readyState === WebSocket.OPEN || socket?.readyState === WebSocket.CONNECTING) {
@@ -30905,15 +30909,34 @@ var ReverseWSDownstreamTransport = class extends DownstreamTransport {
           extension_id: globalThis.chrome?.runtime?.id ?? null
         })
       );
+      if (this.heartbeat_timer) {
+        clearInterval(this.heartbeat_timer);
+      }
+      this.heartbeat_timer = setInterval(() => {
+        if (this.socket?.readyState === WebSocket.OPEN) {
+          try {
+            this.socket.send(JSON.stringify({ type: "ping" }));
+          } catch {
+          }
+        }
+      }, 5e3);
     });
     ws.addEventListener("message", (event) => {
       void this.handleMessage(ws, event.data);
     });
     ws.addEventListener("error", () => {
+      if (this.heartbeat_timer) {
+        clearInterval(this.heartbeat_timer);
+        this.heartbeat_timer = null;
+      }
       if (this.socket === ws) this.socket = null;
       this.scheduleReconnect();
     });
     ws.addEventListener("close", () => {
+      if (this.heartbeat_timer) {
+        clearInterval(this.heartbeat_timer);
+        this.heartbeat_timer = null;
+      }
       if (this.socket === ws) this.socket = null;
       this.scheduleReconnect();
     });

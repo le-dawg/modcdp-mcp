@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gorilla/websocket"
+
 	"github.com/dawgctor/modcdp-mcp/internal/broker"
 )
 
@@ -163,4 +165,129 @@ func TestSocketPathAccessor(t *testing.T) {
 		t.Fatalf("SocketPath() = %q, want %q", b.SocketPath(), sockPath)
 	}
 	_ = strconv.Itoa(29892) // ensure strconv import used
+}
+
+func TestBrokerRFC6455PingPong(t *testing.T) {
+	sock := freeSock(t)
+	b := startBroker(t, 29882, 29883, sock)
+	_ = b
+
+	wsURL := "ws://127.0.0.1:29882"
+	conn, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
+	if err != nil {
+		t.Fatalf("ws dial: %v", err)
+	}
+	defer conn.Close()
+
+	// Channel to signal received ping from broker
+	pingReceived := make(chan string, 10)
+	conn.SetPingHandler(func(appData string) error {
+		pingReceived <- appData
+		return conn.WriteControl(websocket.PongMessage, []byte(appData), time.Now().Add(time.Second))
+	})
+
+	// Read messages in background so SetPingHandler is executed
+	go func() {
+		for {
+			if _, _, err := conn.ReadMessage(); err != nil {
+				return
+			}
+		}
+	}()
+
+	// Perform hello handshake
+	hello := map[string]interface{}{
+		"type":              "hello",
+		"browser_tag":       "main",
+		"extension_version": "0.2.0",
+		"session_nonce":     time.Now().UnixNano(),
+	}
+	if err := conn.WriteJSON(hello); err != nil {
+		t.Fatalf("write hello: %v", err)
+	}
+
+	// Verify status is READY
+	resp := ipcStatus(t, sock)
+	mainMap := resp["main"].(map[string]interface{})
+	if mainMap["state"] != "READY" {
+		t.Fatalf("expected state READY, got %v", mainMap["state"])
+	}
+
+	// Wait up to 12s for broker's 10s ticker ping
+	select {
+	case tag := <-pingReceived:
+		if tag != "main" {
+			t.Fatalf("expected ping payload 'main', got %q", tag)
+		}
+	case <-time.After(12 * time.Second):
+		t.Fatal("timed out waiting for RFC 6455 ping from broker")
+	}
+
+	// Verify status remains READY
+	respAfter := ipcStatus(t, sock)
+	mainMapAfter := respAfter["main"].(map[string]interface{})
+	if mainMapAfter["state"] != "READY" {
+		t.Fatalf("expected state READY after ping/pong, got %v", mainMapAfter["state"])
+	}
+}
+
+func TestBrokerOriginValidation(t *testing.T) {
+	sock := freeSock(t)
+	b := startBroker(t, 29872, 29873, sock)
+	_ = b
+
+	wsURL := "ws://127.0.0.1:29872"
+
+	// 1. chrome-extension:// origin must succeed
+	h1 := make(map[string][]string)
+	h1["Origin"] = []string{"chrome-extension://mdedooklbnfejodmnhmkdpkaedafkehf"}
+	conn1, _, err1 := websocket.DefaultDialer.Dial(wsURL, h1)
+	if err1 != nil {
+		t.Fatalf("expected chrome-extension origin to succeed, got %v", err1)
+	}
+	conn1.Close()
+
+	// 2. Untrusted website origin must fail (HTTP 403 Forbidden)
+	h2 := make(map[string][]string)
+	h2["Origin"] = []string{"https://malicious-website.com"}
+	_, resp2, err2 := websocket.DefaultDialer.Dial(wsURL, h2)
+	if err2 == nil {
+		t.Fatal("expected untrusted origin to be rejected, but connection succeeded")
+	}
+	if resp2 != nil && resp2.StatusCode != 403 {
+		t.Fatalf("expected HTTP 403 Forbidden, got %d", resp2.StatusCode)
+	}
+
+	// 3. Domain suffix spoofing (e.g. http://127.0.0.1.evil.com) must be rejected
+	h3 := make(map[string][]string)
+	h3["Origin"] = []string{"http://127.0.0.1.evil.com"}
+	_, resp3, err3 := websocket.DefaultDialer.Dial(wsURL, h3)
+	if err3 == nil {
+		t.Fatal("expected suffix-spoofed 127.0.0.1 origin to be rejected, but connection succeeded")
+	}
+	if resp3 != nil && resp3.StatusCode != 403 {
+		t.Fatalf("expected HTTP 403 Forbidden for suffix spoofing, got %d", resp3.StatusCode)
+	}
+
+	// 4. Domain suffix spoofing (e.g. http://localhost.attacker.com) must be rejected
+	h4 := make(map[string][]string)
+	h4["Origin"] = []string{"http://localhost.attacker.com"}
+	_, resp4, err4 := websocket.DefaultDialer.Dial(wsURL, h4)
+	if err4 == nil {
+		t.Fatal("expected suffix-spoofed localhost origin to be rejected, but connection succeeded")
+	}
+	if resp4 != nil && resp4.StatusCode != 403 {
+		t.Fatalf("expected HTTP 403 Forbidden for suffix spoofing, got %d", resp4.StatusCode)
+	}
+
+	// 5. Unauthorized foreign extension ID (not CanonicalExtensionID) must be rejected
+	h5 := make(map[string][]string)
+	h5["Origin"] = []string{"chrome-extension://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}
+	_, resp5, err5 := websocket.DefaultDialer.Dial(wsURL, h5)
+	if err5 == nil {
+		t.Fatal("expected unauthorized foreign extension origin to be rejected, but connection succeeded")
+	}
+	if resp5 != nil && resp5.StatusCode != 403 {
+		t.Fatalf("expected HTTP 403 Forbidden for foreign extension, got %d", resp5.StatusCode)
+	}
 }

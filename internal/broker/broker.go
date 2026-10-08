@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"strconv"
 	"sync"
@@ -22,10 +23,15 @@ const (
 	DefaultDevPort  = 29293
 	BrokerSockPath  = "/tmp/modcdp-broker.sock"
 
-	handshakeTimeout   = 500 * time.Millisecond
-	heartbeatInterval  = 5 * time.Second
-	heartbeatEvictAge  = 15 * time.Second
+	handshakeTimeout   = 1000 * time.Millisecond
+	heartbeatInterval  = 10 * time.Second
+	heartbeatEvictAge  = 60 * time.Second
 	defaultToolTimeout = 10 * time.Second
+
+	// CanonicalExtensionID is the deterministic 32-character extension ID
+	// derived from the manifest public key:
+	// SHA-256 of public key DER -> first 128 bits -> characters a-p
+	CanonicalExtensionID = "mdedooklbnfejodmnhmkdpkaedafkehf"
 )
 
 // BrokerError is a typed error code returned from Dispatch.
@@ -68,6 +74,7 @@ func (s BrowserState) String() string {
 // BrowserSlot holds the live connection and state for one browser tag (main/dev).
 type BrowserSlot struct {
 	mu           sync.Mutex
+	writeMu      sync.Mutex
 	ws           *websocket.Conn
 	state        BrowserState
 	sessionNonce int64
@@ -79,6 +86,28 @@ func (s *BrowserSlot) State() BrowserState {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.state
+}
+
+func (s *BrowserSlot) WriteMessage(messageType int, data []byte) error {
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
+	s.mu.Lock()
+	ws := s.ws
+	s.mu.Unlock()
+	if ws == nil {
+		return fmt.Errorf("connection closed")
+	}
+	return ws.WriteMessage(messageType, data)
+}
+
+func (s *BrowserSlot) WriteControl(messageType int, data []byte, deadline time.Time) error {
+	s.mu.Lock()
+	ws := s.ws
+	s.mu.Unlock()
+	if ws == nil {
+		return fmt.Errorf("connection closed")
+	}
+	return ws.WriteControl(messageType, data, deadline)
 }
 
 type pendingRequest struct {
@@ -128,7 +157,32 @@ func New(cfg Config) *Broker {
 		cancel:     cancel,
 		pendingReq: make(map[int64]*pendingRequest),
 		upgrader: websocket.Upgrader{
-			CheckOrigin: func(r *http.Request) bool { return true },
+			CheckOrigin: func(r *http.Request) bool {
+				origin := r.Header.Get("Origin")
+				if origin == "" {
+					return true // allow CLI/test clients without browser Origin header
+				}
+				u, err := url.Parse(origin)
+				if err != nil {
+					return false
+				}
+				// 1. Chrome extension origin: scheme must be chrome-extension and host must match CanonicalExtensionID
+				if u.Scheme == "chrome-extension" {
+					h := u.Hostname()
+					if h == "" {
+						h = u.Host
+					}
+					return h == CanonicalExtensionID
+				}
+				// 2. Loopback origins: scheme must be http/https and host must be strictly 127.0.0.1 or localhost
+				if u.Scheme == "http" || u.Scheme == "https" {
+					h := u.Hostname()
+					if h == "127.0.0.1" || h == "localhost" {
+						return true
+					}
+				}
+				return false
+			},
 		},
 	}
 }
@@ -280,6 +334,20 @@ func (b *Broker) handleWSUpgrade(w http.ResponseWriter, r *http.Request, browser
 	slot.lastActivity = time.Now()
 	slot.mu.Unlock()
 
+	// RFC 6455 Ping / Pong handlers to update lastActivity
+	conn.SetPingHandler(func(appData string) error {
+		slot.mu.Lock()
+		slot.lastActivity = time.Now()
+		slot.mu.Unlock()
+		return slot.WriteControl(websocket.PongMessage, []byte(appData), time.Now().Add(time.Second))
+	})
+	conn.SetPongHandler(func(appData string) error {
+		slot.mu.Lock()
+		slot.lastActivity = time.Now()
+		slot.mu.Unlock()
+		return nil
+	})
+
 	fmt.Printf("[Broker] %s connected — nonce=%d version=%s build=%s\n",
 		browserType, hello.SessionNonce, hello.ExtVersion, hello.BuildHash)
 
@@ -377,7 +445,7 @@ func (b *Broker) readExtensionLoop(conn *websocket.Conn, browserType string, slo
 	}
 }
 
-// heartbeatMonitor evicts slots that have been silent for heartbeatEvictAge.
+// heartbeatMonitor sends RFC 6455 Ping frames and evicts slots that exceed heartbeatEvictAge.
 func (b *Broker) heartbeatMonitor(slot *BrowserSlot, tag string) {
 	ticker := time.NewTicker(heartbeatInterval)
 	defer ticker.Stop()
@@ -387,20 +455,31 @@ func (b *Broker) heartbeatMonitor(slot *BrowserSlot, tag string) {
 			return
 		case <-ticker.C:
 			slot.mu.Lock()
-			if slot.state == StateReady && time.Since(slot.lastActivity) > heartbeatEvictAge {
-				fmt.Printf("[Broker] heartbeat timeout on %s — evicting\n", tag)
-				slot.state = StateStale
-				if slot.ws != nil {
-					slot.ws.WriteMessage(websocket.CloseMessage,
-						websocket.FormatCloseMessage(1001, "heartbeat_timeout"))
-					slot.ws.Close()
+			isReady := slot.state == StateReady
+			silentAge := time.Since(slot.lastActivity)
+			slot.mu.Unlock()
+
+			if isReady {
+				// Send RFC 6455 Ping control frame to prompt Pong response from browser network stack
+				_ = slot.WriteControl(websocket.PingMessage, []byte(tag), time.Now().Add(2*time.Second))
+
+				// If the extension or browser hasn't replied to any ping or message within heartbeatEvictAge
+				if silentAge > heartbeatEvictAge {
+					fmt.Printf("[Broker] heartbeat timeout on %s (silent for %v) — evicting\n", tag, silentAge)
+					slot.mu.Lock()
+					slot.state = StateStale
+					ws := slot.ws
 					slot.ws = nil
+					slot.state = StateDisconnected
+					slot.mu.Unlock()
+
+					if ws != nil {
+						_ = ws.WriteControl(websocket.CloseMessage,
+							websocket.FormatCloseMessage(1001, "heartbeat_timeout"), time.Now().Add(time.Second))
+						_ = ws.Close()
+					}
+					b.failPendingForBrowser(tag, "SESSION_STALE: heartbeat timeout")
 				}
-				slot.state = StateDisconnected
-				slot.mu.Unlock()
-				b.failPendingForBrowser(tag, "SESSION_STALE: heartbeat timeout")
-			} else {
-				slot.mu.Unlock()
 			}
 		}
 	}
@@ -571,9 +650,7 @@ func (b *Broker) handleSendRequest(req IpcRequest) []byte {
 	b.pendingReq[id] = &pendingRequest{browser: target, ch: respCh}
 	b.reqMu.Unlock()
 
-	slot.mu.Lock()
-	err = wsConn.WriteMessage(websocket.TextMessage, payloadBytes)
-	slot.mu.Unlock()
+	err = slot.WriteMessage(websocket.TextMessage, payloadBytes)
 	if err != nil {
 		b.reqMu.Lock()
 		delete(b.pendingReq, id)
@@ -641,20 +718,22 @@ func (b *Broker) Stop() {
 
 	// Close WS connections
 	b.main.mu.Lock()
-	if b.main.ws != nil {
-		b.main.ws.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(1001, "server_stopping"))
-		b.main.ws.Close()
-		b.main.ws = nil
-	}
+	mainWs := b.main.ws
+	b.main.ws = nil
 	b.main.mu.Unlock()
+	if mainWs != nil {
+		_ = mainWs.WriteControl(websocket.CloseMessage, websocket.FormatCloseMessage(1001, "server_stopping"), time.Now().Add(time.Second))
+		_ = mainWs.Close()
+	}
 
 	b.dev.mu.Lock()
-	if b.dev.ws != nil {
-		b.dev.ws.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(1001, "server_stopping"))
-		b.dev.ws.Close()
-		b.dev.ws = nil
-	}
+	devWs := b.dev.ws
+	b.dev.ws = nil
 	b.dev.mu.Unlock()
+	if devWs != nil {
+		_ = devWs.WriteControl(websocket.CloseMessage, websocket.FormatCloseMessage(1001, "server_stopping"), time.Now().Add(time.Second))
+		_ = devWs.Close()
+	}
 
 	if b.mainServer != nil {
 		b.mainServer.Close()
