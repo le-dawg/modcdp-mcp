@@ -56,6 +56,9 @@ class ReverseWSDownstreamTransport extends DownstreamTransport {
   // the timer fires.
   private reconnect_timer: ReturnType<typeof setTimeout> | null = null;
 
+  // Periodic heartbeat ping timer to ensure quiet sockets stay active.
+  private heartbeat_timer: ReturnType<typeof setInterval> | null = null;
+
   // Request object -> WebSocket that sent it. Written by handleMessage and read
   // by sendResponse so responses go only to the originating downstream client.
   private readonly socket_from_request = new WeakMap<CdpCommandMessage, WebSocket>();
@@ -99,6 +102,10 @@ class ReverseWSDownstreamTransport extends DownstreamTransport {
     if (this.reconnect_timer) {
       clearTimeout(this.reconnect_timer);
       this.reconnect_timer = null;
+    }
+    if (this.heartbeat_timer) {
+      clearInterval(this.heartbeat_timer);
+      this.heartbeat_timer = null;
     }
     const socket = this.socket;
     this.socket = null;
@@ -161,15 +168,37 @@ class ReverseWSDownstreamTransport extends DownstreamTransport {
           extension_id: globalThis.chrome?.runtime?.id ?? null,
         }),
       );
+
+      // Periodic keepalive ping every 5 seconds to keep connection fresh
+      if (this.heartbeat_timer) {
+        clearInterval(this.heartbeat_timer);
+      }
+      this.heartbeat_timer = setInterval(() => {
+        if (this.socket?.readyState === WebSocket.OPEN) {
+          try {
+            this.socket.send(JSON.stringify({ type: "ping" }));
+          } catch {
+            // Ignore send failures; error/close handler cleans up
+          }
+        }
+      }, 5_000);
     });
     ws.addEventListener("message", (event) => {
       void this.handleMessage(ws, event.data);
     });
     ws.addEventListener("error", () => {
+      if (this.heartbeat_timer) {
+        clearInterval(this.heartbeat_timer);
+        this.heartbeat_timer = null;
+      }
       if (this.socket === ws) this.socket = null;
       this.scheduleReconnect();
     });
     ws.addEventListener("close", () => {
+      if (this.heartbeat_timer) {
+        clearInterval(this.heartbeat_timer);
+        this.heartbeat_timer = null;
+      }
       if (this.socket === ws) this.socket = null;
       this.scheduleReconnect();
     });
